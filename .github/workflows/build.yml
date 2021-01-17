@@ -1,35 +1,41 @@
-name: eShop build
+name: eShop deploy
 
 on:
   push:
     paths:
-    - 'src/Services/Coupon/**'
-    - 'tests/Services/Coupon/**'
+    - 'deploy/k8s/helm-simple/coupon/*'
     branches: [ main ]
 
 jobs:
-  build-and-push-docker-image:
+  deploy-to-aks:
     runs-on: ubuntu-latest
     steps:
+    - name: Azure Kubernetes set context
+      uses: Azure/aks-set-context@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        resource-group: 'eshop-learn-rg'
+        cluster-name: 'eshop-learn-aks'
+
     - name: Get code from the repository
       uses: actions/checkout@v1
       with:
         ref: main
 
-    - name: Run unit tests
-      run: dotnet test tests/Services/Coupon/*.Tests/*.csproj
-      env:
-        DOTNET_CLI_TELEMETRY_OPTOUT: true
-        DOTNET_NOLOGO: true
+    - name: Helm tool installer
+      uses: Azure/setup-helm@v1
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v1.1.0
+    - name: Azure Login
+      uses: Azure/login@v1.1
       with:
-        username: ${{ secrets.REGISTRY_USERNAME }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
-        registry: ${{ secrets.REGISTRY_LOGIN_SERVER }}
-        path: .
-        dockerfile: './src/Services/Coupon/Coupon.API/Dockerfile.acr'
-        repository: 'coupon.api'
-        tags: 'linux-latest'
-        push: true
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy
+      run: >
+        helm upgrade 
+        --install eshoplearn-coupon
+        --namespace=default 
+        --set registry=${{ secrets.REGISTRY_LOGIN_SERVER }} 
+        --set imagePullPolicy=Always 
+        --set host=${{ secrets.IP_ADDRESS }} 
+        --set protocol=http './deploy/k8s/helm-simple/coupon'
